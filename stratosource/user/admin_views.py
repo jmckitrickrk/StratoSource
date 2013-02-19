@@ -131,11 +131,19 @@ class BranchForm(forms.ModelForm):
         cron_interval = int(cleaned_data.get('cron_interval'))
         cron_start = cleaned_data.get('cron_start')
         if cron_type == 'h':
-            if cron_interval < 1 or cron_interval > 23:
-               self._errors["cron_interval"] = self.error_class(['Interval must be between 1 and 23'])
-            offset = int(cron_start)
-            if offset < 0 or offset > 59:
-                self._errors["cron_start"] = self.error_class(['Start must be between 0 and 59'])
+            if re.match('^\d+$', cron_start):
+                if cron_interval < 1 or cron_interval > 23:
+                    self._errors["cron_interval"] = self.error_class(['Interval must be between 1 and 23'])
+                offset = int(cron_start)
+                if offset < 0 or offset > 59:
+                    self._errors["cron_start"] = self.error_class(['Start must be between 0 and 59'])
+            else:
+                self._errors["cron_start"] = self.error_class(['Interval and start must be integers'])
+        elif cron_type == 'd':
+            if not re.match('^\d{2}:\d{2}$', cron_start):
+                self._errors["cron_start"] = self.error_class(['Start must be HH:mm'])
+            if cron_interval < 1 or cron_interval > 30:
+                self._errors["cron_interval"] = self.error_class(['Interval must be between 1 and 30'])
 
         return cleaned_data
 
@@ -255,6 +263,13 @@ def createCrontab(branch):
         else:
             interval_str = '*'
         cronline = "%s %s * * * %s %s %s >/tmp/cronjob.out 2>&1" % (branch.cron_start, interval_str, os.path.join(settings.ROOT_PATH, 'cronjob.sh'), branch.repo.name, branch.name)
+        logger.debug('Creating cron tab with line ' + cronline)
+        item = CronItem(line=cronline + ' #' + (CRON_COMMENT + ' %d' % branch.id))
+        ctab.add(item)
+        ctab.write()
+    elif branch.cron_type == 'd':
+        hour_min = branch.cron_start.split(':');
+        cronline = "%s %s * * * %s %s %s >/tmp/cronjob.out 2>&1" % (hour_min[1], hour_min[0], os.path.join(settings.ROOT_PATH, 'cronjob.sh'), branch.repo.name, branch.name)
         logger.debug('Creating cron tab with line ' + cronline)
         item = CronItem(line=cronline + ' #' + (CRON_COMMENT + ' %d' % branch.id))
         ctab.add(item)
